@@ -9,7 +9,7 @@ import typer
 from rich import print as rprint
 
 from models.sos import ScalarOnScalarModel
-from optimizers.nbdo import NBDO  # your existing class
+from optimizers.nbdo import NBDO
 
 
 app = typer.Typer(help="NBDO — minimal CLI to generate and dump train/val sets")
@@ -39,14 +39,11 @@ def dump(
     Generate train/validation sets using your NBDO.compute_train_set and save them.
     No extra computation: result.json includes only your --result string and metadata.
     """
-    # Minimal objects exactly from what you already have
-    model = ScalarOnScalarModel(Kx=kx)               # your class, simple init
-    nbdo = NBDO(model=model, latent_dim=2)           # latent_dim arbitrary; not used here
+    model = ScalarOnScalarModel(Kx=kx)
+    nbdo = NBDO(model=model, latent_dim=2)
 
-    # Build train/val sets (uses your own method)
     nbdo.compute_train_set(num_designs=num_designs, runs=runs, random_state=seed)
 
-    # Save
     run_dir = _timestamp_dir(out_dir, "dump")
     _save_csv(run_dir / "train_set.csv", nbdo.train_set)
     _save_csv(run_dir / "val_set.csv", nbdo.val_set)

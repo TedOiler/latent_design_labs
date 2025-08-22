@@ -7,6 +7,7 @@ from typing import Optional
 import numpy as np
 import typer
 from rich import print as rprint
+import subprocess
 
 from models.sos import ScalarOnScalarModel
 from optimizers.nbdo import NBDO
@@ -33,7 +34,7 @@ def dump(
     num_designs: int = typer.Option(..., "--num-designs", "-L", help="number of candidate designs (L)"),
     result: str = typer.Option("", "--result", "-r", help="any user-provided string to store in result.json"),
     seed: Optional[int] = typer.Option(None, "--seed", help="RNG seed"),
-    out_dir: Path = typer.Option(Path("runs"), "--out-dir", help="folder to save files"),
+    out_dir: Path = typer.Option(Path("results"), "--out-dir", help="folder to save files"),
 ) -> None:
     """
     Generate train/validation sets using your NBDO.compute_train_set and save them.
@@ -62,6 +63,31 @@ def dump(
 
     rprint(f"[bold green]✓ Saved[/] {run_dir/'train_set.csv'} and {run_dir/'val_set.csv'}")
     rprint(f"[bold]Meta[/]: {run_dir/'result.json'}")
+
+@app.command("batch")
+def batch(
+    file: Path = typer.Argument(..., exists=True, readable=True, help="Text file with one full command per line"),
+    stop_on_error: bool = typer.Option(False, help="Stop at first failing command"),
+) -> None:
+    """
+    Run each command from the given text file, exactly as written.
+    - Empty lines and lines starting with '#' are ignored.
+    - Each command runs in its own subprocess.
+    """
+    lines = file.read_text().splitlines()
+    ran = 0
+    for idx, raw in enumerate(lines, 1):
+        cmd = raw.strip()
+        if not cmd or cmd.startswith("#"):
+            continue
+        rprint(f"[cyan]▶ Running [{idx}]:[/] {cmd}")
+        res = subprocess.run(cmd, shell=True)
+        ran += 1
+        if res.returncode != 0:
+            rprint(f"[red]✗ Command [{idx}] exited with code {res.returncode}[/]")
+            if stop_on_error:
+                raise typer.Exit(res.returncode)
+    rprint(f"[bold green]✓ Done[/] ({ran} command{'s' if ran != 1 else ''} run)")
 
 if __name__ == "__main__":
     app()

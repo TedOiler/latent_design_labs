@@ -22,19 +22,19 @@ current_dir = Path(__file__).parent.resolve()
 parent_dir = current_dir.parent
 sys.path.append(str(parent_dir))
 
-from base_optimizer import BaseOptimizer
+from .base_optimizer import BaseOptimizer
 from models.sos import ScalarOnScalarModel
 
 class NBDO(BaseOptimizer):
     def __init__(self, model, latent_dim, base=2, max_layers=None, alpha=0.0, latent_space_act='tanh', output_layer_act='tanh'):
         self.model = model
         self.runs = None
-        self.latent_dim
+        self.latent_dim = latent_dim
         self.base = base
         self.max_layers = max_layers
         self.alpha = alpha
         self.latent_space_act = latent_space_act
-        self.latent_layer_act = output_layer_act
+        self.output_layer_act = output_layer_act
 
         self.input_dim = None
         self.encoder = None
@@ -79,8 +79,10 @@ class NBDO(BaseOptimizer):
         self.runs = int(runs)
         num_features = int(self.model.Kx)
 
+        epsilon = 1e-8
+        low, high = -1 + epsilon, 1 - epsilon
         rng = np.random.default_rng(random_state)
-        D = rng.uniform(low, high, size=(num_designs, self.runs, num_features)).astype(np.float32, copy=False)
+        D = rng.uniform(-1, 1, size=(num_designs, self.runs, num_features)).astype(np.float32, copy=False)
         X = D.reshape(num_designs, self.runs * num_features)
 
         self.train_set, self.val_set = train_test_split(X,
@@ -88,3 +90,7 @@ class NBDO(BaseOptimizer):
          random_state=random_state, 
          shuffle=True)
         self.input_dim = X.shape[1]
+
+
+    def optimize():
+        pass

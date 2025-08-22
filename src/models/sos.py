@@ -14,3 +14,6 @@ class ScalarOnScalarModel(BaseModel):
         model_matrix = np.concatenate((ones, X), axis=1)
 
         return model_matrix
+    
+    def compute_objective(self):
+        pass

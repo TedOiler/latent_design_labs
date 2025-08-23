@@ -26,11 +26,10 @@ from .base_optimizer import BaseOptimizer
 from models.sos import ScalarOnScalarModel
 
 class NBDO(BaseOptimizer):
-    def __init__(self, model, latent_dim, base=2, max_layers=None, alpha=0.0, latent_space_act='tanh', output_layer_act='tanh'):
+    def __init__(self, model, latent_dim, max_layers=None, alpha=0.0, latent_space_act='tanh', output_layer_act='tanh'):
         self.model = model
         self.runs = None
         self.latent_dim = latent_dim
-        self.base = base
         self.max_layers = max_layers
         self.alpha = alpha
         self.latent_space_act = latent_space_act
@@ -51,8 +50,8 @@ class NBDO(BaseOptimizer):
         self.history = None
 
         self.optimal_latent_var = None
-        self.optimal_cr = None
-        self.optimal_des = None
+        self.optimal_criterion = None
+        self.optimal_design = None
         self.search_history = None
         self.eval_history = None
 
@@ -91,6 +90,88 @@ class NBDO(BaseOptimizer):
          shuffle=True)
         self.input_dim = X.shape[1]
 
+    def _build_encoder(self):
+        self.num_layers = int(np.log(self.input_dim / self.latent_dim) / np.log(2))
+        self.num_layers = min(self.num_layers, self.max_layers) if self.max_layers is not None else self.num_layers
+        
+        self.input_layer = Input(shape=(self.input_dim,))
+        encoder = self.input_layer
+        for layer in range(self.num_layers):
+            n_neurons = int(self.input_dim / 2 ** (layer + 1))
+            encoder = Dense(n_neurons, activation=LeakyReLU(alpha=self.alpha))(encoder)
 
-    def optimize():
-        pass
+        latent = Dense(self.latent_dim, activation=self.latent_space_act, name='latent')(encoder)
+        self.encoder = Model(self.input_layer, latent, name='encoder')
+    
+    def _build_decoder(self):
+
+        latent_inputs = Input(shape=(self.latent_dim,))
+        decoder = latent_inputs
+        for layer in range(self.num_layers, 0, -1):
+            n_neurons = int(self.input_dim / 2 ** layer)
+            decoder = Dense(n_neurons, activation=LeakyReLU(alpha=self.alpha))(decoder)
+        self.output_layer = Dense(self.input_dim, activation=self.output_layer_act)(decoder)
+        self.decoder = Model(latent_inputs, self.output_layer, name='decoder')
+
+    def _build_autoencoder(self):
+        self._build_encoder()
+        self._build_decoder()
+
+        autoencoder_input = self.input_layer
+        latent_representation = self.encoder(autoencoder_input)
+        autoencoder_output = self.decoder(latent_representation)
+
+        self.autoencoder = Model(inputs=autoencoder_input, outputs=autoencoder_output, name='autoencoder')
+
+    def _get_custom_loss(self):
+        if isinstance(self.model, ScalarOnScalarModel):
+            def custom_loss(y_true, y_pred):
+                objective_value = self.model.compute_objective_tf(y_pred, self.runs, self.model.Kx)
+                return objective_value
+            return custom_loss
+
+    def fit(self, epochs, batch_size=32, patience=50, optimizer=RMSprop()):
+        self._build_autoencoder()
+        custom_loss = self._get_custom_loss()
+        self.autoencoder.compile(optimizer=optimizer, loss=custom_loss)
+        early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
+        self.autoencoder.build(input_shape=(None, self.input_dim))
+        self.history = self.autoencoder.fit(self.train_set, self.train_set,
+                                            epochs=epochs,
+                                            batch_size=batch_size,
+                                            validation_data=(self.val_set, self.val_set),
+                                            callbacks=[early_stopping],
+                                            verbose=0)
+        return self.history
+
+    def clear_memory(self):
+        del self.autoencoder
+        del self.encoder
+        del self.decoder
+        gc.collect()
+
+    def encode(self, design):
+        return self.encoder.predict(design.reshape(1, -1))
+    
+    def decode(self, latent):
+        return self.decoder.predict(latent).reshape(self.runs, -1)
+    
+    def optimize(self, n_calls=10, acq_func='EI', acq_optimizer='sampling', n_random_starts=5, verbose=True):
+        
+        def objective(latent_var):
+            latent_var = np.array(latent_var).reshape(1, -1)
+            decoded = self.decoder.predict(latent_var)
+            if isinstance(self.model, ScalarOnScalarModel):
+                optimality = self.model.compute_objective_bo(X=decoded, m=self.runs, n=self.model.Kx)
+                return optimality
+
+        dimensions = [(-1, 1) for _ in range(self.latent_dim)]
+        res = gp_minimize(objective, dimensions, n_calls=n_calls, random_state=42, verbose=verbose, n_jobs=-1,
+                            n_random_starts=n_random_starts, acq_func=acq_func, acq_optimizer=acq_optimizer)
+        self.optimal_latent_var = res.x
+        self.optimal_criterion = res.fun
+        self.optimal_design = self.decode(np.array(self.optimal_latent_var).reshape(1, -1))
+        self.search_history = res.x_iters
+        self.eval_history = res.func_vals
+        clear_session()
+        return self.optimal_criterion, self.optimal_design

@@ -30,3 +30,8 @@ py-modules = ["nbdo_cli"]  # was ["cli"]
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["models*", "optimizers*"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.30.1",
+]

@@ -25,7 +25,7 @@ nbdo = "nbdo_cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["nbdo_cli"]  # was ["cli"]
+py-modules = ["nbdo_cli"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

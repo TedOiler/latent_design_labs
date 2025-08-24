@@ -1,70 +1,83 @@
 from .base_model import BaseModel
 import numpy as np
 import tensorflow as tf
+from itertools import combinations_with_replacement
+from optimalities import PsiA, PsiD
 
 class ScalarOnScalarModel(BaseModel):
-    def __init__(self, Kx, order=1):
-        self.Kx = Kx
-        self.J_cb = 1
-        self.order = order
+    def __init__(self, Kx, order=1, const: bool = True, criterion: str = "A"):
+        self.Kx = int(Kx)
+        self.order = int(order)
+        self.const = bool(const)
 
-    def calc_model_matrix(self, X):
-        X = np.array(X)
-        n_samples, n_features = X.shape
-        ones = np.ones((n_samples, 1))
-        model_matrix = np.concatenate((ones, X), axis=1)
+        c = str(criterion).upper()
+        self.psi = PsiA() if c == "A" else PsiD() if c == "D" else (_ for _ in ()).throw(ValueError(f"Unknown {c}"))
 
-        return model_matrix
-    
-    def calc_covar_matrix(self, Model_mat):
-        model_mat = self.calc_model_matrix(Model_mat)
-        Covar = model_mat.T @ model_mat
-        return Covar
-    
-    def compute_objective(self, Model_mat):
-        Covar = self.calc_covar_matrix(Model_mat)
+        # --- Polynomial basis meta (attribute as requested) ---
+        self.monomial_combos = [
+            combo
+            for o in range(1, self.order + 1)
+            for combo in combinations_with_replacement(range(self.Kx), o)
+        ]
+        self.num_params = (1 if self.const else 0) + len(self.monomial_combos)
 
-        try:
-            P_inv = np.linalg.inv(Covar)
-        except np.linalg.LinAlgError:
-            return np.nan
+    # 1) Raw design
+    def design_matrix(self, X: np.ndarray) -> np.ndarray:
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2 or X.shape[1] != self.Kx:
+            raise ValueError(f"Expected (runs, {self.Kx}) design, got {X.shape}")
+        return X
 
-        value = np.trace(P_inv)
-        return value
+    # 2) Model matrix (NumPy)
+    def model_matrix(self, X: np.ndarray) -> np.ndarray:
+        D = self.design_matrix(X)  # (runs, Kx)
+        cols = []
+        if self.const:
+            cols.append(np.ones((D.shape[0], 1), dtype=D.dtype))
+        for combo in self.monomial_combos:
+            block = D[:, combo] if len(combo) > 1 else D[:, [combo[0]]]
+            term = np.prod(block, axis=1, dtype=D.dtype) if block.ndim == 2 else block
+            cols.append(term.reshape(-1, 1))
+        return np.hstack(cols) if cols else np.empty((D.shape[0], 0), dtype=D.dtype)
 
-    def compute_objective_tf(self, X, m, n):
-        batch_size = tf.shape(X)[0]
-        X = tf.reshape(X, (-1, m, n))  # shape: (batch_size, m, n)
+    # 2b) Model matrix (TF batched)
+    def model_matrix_tf(self, X_batch: tf.Tensor) -> tf.Tensor:
+        B = tf.shape(X_batch)[0]
+        m = tf.shape(X_batch)[1]
+        cols = []
+        if self.const:
+            cols.append(tf.ones((B, m, 1), dtype=X_batch.dtype))
+        for combo in self.monomial_combos:
+            g = tf.gather(X_batch, indices=list(combo), axis=2)
+            term = g if len(combo) == 1 else tf.reduce_prod(g, axis=2, keepdims=True)
+            cols.append(term)
+        return tf.concat(cols, axis=2) if cols else X_batch[:, :, :0]
 
-        def build_model_matrix(X_single):
-            Z = tf.ones((m, 1), dtype=X_single.dtype)
-            Z = tf.concat([Z, X_single], axis=1)
-            return Z
+    # 3) Information matrices
+    def information_matrix(self, Z: np.ndarray) -> np.ndarray:
+        return Z.T @ Z
 
-        model_matrices = tf.map_fn(build_model_matrix, X)  # shape: (batch_size, m, num_features_model_matrix)
+    def information_matrix_tf(self, Z_batch: tf.Tensor) -> tf.Tensor:
+        Zt = tf.linalg.matrix_transpose(Z_batch)
+        M = tf.matmul(Zt, Z_batch)
+        return 0.5 * (M + tf.linalg.matrix_transpose(M))  # harmless symmetrization
 
-        Z_t_Z = tf.matmul(model_matrices, model_matrices,
-                          transpose_a=True)  # shape: (batch_size, num_features, num_features)
+    # ---- Objectives (loss) used by training/BO ----
+    def objective_np(self, X: np.ndarray) -> float:
+        Z = self.model_matrix(X)
+        M = self.information_matrix(Z)
+        return self.psi.loss_from_M_np(M)
 
-        det = tf.linalg.det(Z_t_Z)
-        epsilon = 1e-6
-        condition = tf.abs(det)[:, None, None] < epsilon
+    def objective_tf(self, X_batch: tf.Tensor) -> tf.Tensor:
+        Z = self.model_matrix_tf(X_batch)
+        M = self.information_matrix_tf(Z)
+        return self.psi.loss_from_M_tf(M)
 
-        diagonal = tf.linalg.diag_part(Z_t_Z) + epsilon
-        Z_t_Z_epsilon = Z_t_Z + tf.linalg.diag(diagonal - tf.linalg.diag_part(Z_t_Z))
-        Z_t_Z_regularized = tf.where(condition, Z_t_Z_epsilon, Z_t_Z)
+    def objective_tf_from_flat(self, X_flat: tf.Tensor, m: int, n: int) -> tf.Tensor:
+        return self.objective_tf(tf.reshape(X_flat, (-1, m, n)))
 
-        M = tf.linalg.inv(Z_t_Z_regularized)
-        value = tf.linalg.trace(M)
-        return tf.where(value < 0, tf.constant(1e10, dtype=value.dtype), value)
-
-    def compute_objective_bo(self, X, m, n):
-        try:
-            X = np.array(X).reshape(m, -1)  # infer the correct number of columns
-            model_mat = self.calc_model_matrix(X)
-            ZtZ = model_mat.T @ model_mat
-            M = np.linalg.inv(ZtZ)
-            result = np.trace(M)
-            return 1e10 if result < 0 else result
-        except np.linalg.LinAlgError:
-            return 1e10
+    # ---- Positive criterion for display/comparison ----
+    def report_np(self, X: np.ndarray) -> float:
+        Z = self.model_matrix(X)
+        M = self.information_matrix(Z)
+        return self.psi.report_from_M_np(M)

@@ -98,8 +98,11 @@ class NBDO(BaseOptimizer):
         self.optimal_latent_var: Optional[List[float]] = None
         self.optimal_criterion: Optional[float] = None
         self.optimal_design: Optional[np.ndarray] = None
+        self.optimal_report: Optional[float] = None  # positive, human-friendly criterion
         self.search_history: Optional[List[List[float]]] = None
         self.eval_history: Optional[List[float]] = None
+
+
 
         if self.seed is not None:
             self._set_all_seeds(self.seed)
@@ -220,7 +223,7 @@ class NBDO(BaseOptimizer):
         """Get custom loss function for ScalarOnScalarModel A-optimality."""
         if isinstance(self.model, ScalarOnScalarModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-                return self.model.compute_objective_tf(y_pred, self.runs, self.model.Kx)
+                return self.model.objective_tf_from_flat(y_pred, self.runs, self.model.Kx)
             return custom_loss
         return None
 
@@ -309,7 +312,7 @@ class NBDO(BaseOptimizer):
             z = np.array(latent_var, dtype=np.float32).reshape(1, -1)
             decoded: np.ndarray = self.decoder.predict(z, verbose=0)
             if isinstance(self.model, ScalarOnScalarModel):
-                return float(self.model.compute_objective_bo(X=decoded, m=self.runs, n=self.model.Kx))
+                return float(self.model.objective_np_from_flat(decoded, m=self.runs, n=self.model.Kx))
             return 0.0
 
         dimensions: List[Tuple[float, float]] = [(-1.0, 1.0) for _ in range(self.latent_dim)]
@@ -345,7 +348,11 @@ class NBDO(BaseOptimizer):
         self.optimal_latent_var = res.x
         self.optimal_criterion = res.fun
         self.optimal_design = self.decode(np.array(self.optimal_latent_var, dtype=np.float32).reshape(1, -1))
+        try:
+            self.optimal_report = float(self.model.report_np(self.optimal_design))
+        except Exception:
+            self.optimal_report = None  # fallback if something goes wrong
         self.search_history = res.x_iters
         self.eval_history = res.func_vals
 
-        return self.optimal_criterion, self.optimal_design
+        return self.optimal_report, self.optimal_design

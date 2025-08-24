@@ -2,7 +2,7 @@ from .base_model import BaseModel
 import numpy as np
 import tensorflow as tf
 from itertools import combinations_with_replacement
-from optimalities import PsiA, PsiD
+from optimalities import PsiA, PsiD, PsiG, PsiI
 
 class ScalarOnScalarModel(BaseModel):
     def __init__(self, Kx, order=1, const: bool = True, criterion: str = "A"):
@@ -11,7 +11,16 @@ class ScalarOnScalarModel(BaseModel):
         self.const = bool(const)
 
         c = str(criterion).upper()
-        self.psi = PsiA() if c == "A" else PsiD() if c == "D" else (_ for _ in ()).throw(ValueError(f"Unknown {c}"))
+        if c == "A":
+            self.psi = PsiA()
+        elif c == "D":
+            self.psi = PsiD()
+        elif c == "G":
+            self.psi = PsiG()
+        elif c == "I":
+            self.psi = PsiI()
+        else:
+            (_ for _ in ()).throw(ValueError(f"Unknown {c}"))
 
         # --- Polynomial basis meta (attribute as requested) ---
         self.monomial_combos = [

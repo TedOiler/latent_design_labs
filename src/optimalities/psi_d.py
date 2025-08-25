@@ -1,28 +1,19 @@
-# optimalities/psi_d.py
-import numpy as np
+from __future__ import annotations
 import tensorflow as tf
 from .base_psi import BasePsi
+from utils.backend import to_tensor, ArrayLike
 
 class PsiD(BasePsi):
-    def __init__(self, eps: float = 1e-6):
-        self.eps = float(eps)
+    def __init__(self, eps: float = 1e-6) -> None:
+        self.eps: float = float(eps)
 
-    # ---- NumPy ----
-    def loss_from_M_np(self, M: np.ndarray) -> float:
-        p = M.shape[-1]
-        M_spd = M + self.eps * np.eye(p, dtype=M.dtype)
-        sign, logdet = np.linalg.slogdet(M_spd)
-        return float(-logdet)
-
-    def report_from_M_np(self, M: np.ndarray) -> float:
-        # Positive criterion to display
-        return float(np.exp(-self.loss_from_M_np(M)))
-
-    # ---- TF ----
-    def loss_from_M_tf(self, M: tf.Tensor) -> tf.Tensor:
+    def loss_from_M(self, M: ArrayLike) -> tf.Tensor:
+        M = to_tensor(M)
         p = tf.shape(M)[-1]
-        M_spd = M + tf.cast(self.eps, M.dtype) * tf.eye(p, dtype=M.dtype)
-        return -tf.linalg.logdet(M_spd)
+        I = tf.eye(p, batch_shape=tf.shape(M)[:-2], dtype=M.dtype)
+        M_spd = M + tf.cast(self.eps, M.dtype) * I
+        return -tf.linalg.logdet(M_spd)  # (B,) or scalar
 
-    def report_from_M_tf(self, M: tf.Tensor) -> tf.Tensor:
-        return tf.exp(-self.loss_from_M_tf(M))
+    def report_from_M(self, M: ArrayLike) -> tf.Tensor:
+        # Invert the log transform to report determinant on the original scale
+        return tf.exp(-self.loss_from_M(M))

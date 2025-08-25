@@ -1,19 +1,22 @@
-# optimalities/psi_a.py
-import numpy as np
+from __future__ import annotations
 import tensorflow as tf
 from .base_psi import BasePsi
+from utils.backend import to_tensor, ArrayLike
 
 class PsiA(BasePsi):
-    """
-    A-optimality (minimize trace(M^{-1})).
-    NumPy and TF definitions are identical algebraically.
-    """
-    # ---- NumPy ----
-    def loss_from_M_np(self, M: np.ndarray) -> float:
-        Minv = np.linalg.inv(M)
-        return float(np.trace(Minv))
+    def __init__(self, eps: float = 0.0) -> None:
+        # Optional jitter for SPD safety (not required).
+        self.eps: float = float(eps)
 
-    # ---- TensorFlow ----
-    def loss_from_M_tf(self, M: tf.Tensor) -> tf.Tensor:
-        Minv = tf.linalg.inv(M)
-        return tf.linalg.trace(Minv)
+    def loss_from_M(self, M: ArrayLike) -> tf.Tensor:
+        M = to_tensor(M)
+        p = tf.shape(M)[-1]
+        I = tf.eye(p, batch_shape=tf.shape(M)[:-2], dtype=M.dtype)
+        if self.eps:
+            M = M + tf.cast(self.eps, M.dtype) * I
+        Minv = tf.linalg.solve(M, I)   # batched solve
+        return tf.linalg.trace(Minv)   # (B,) or scalar
+
+    def report_from_M(self, M: ArrayLike) -> tf.Tensor:
+        # Report the original A-opt criterion (trace(M^{-1}))
+        return self.loss_from_M(M)

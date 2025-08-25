@@ -4,9 +4,10 @@ from __future__ import annotations
 import os
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
 os.environ["PYTHONHASHSEED"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-from typing import Any, Callable, List, Optional, Tuple
-
+from typing import Any, Callable, List, Optional, Tuple, Union
+import warnings
 import gc
 import random
 import numpy as np
@@ -34,21 +35,21 @@ from models.base_model import BaseModel
 
 # --- Tied decoder layer -------------------------------------------------------
 class TiedDense(tf.keras.layers.Layer):
-    def __init__(self, tied_to: Dense, activation=None, use_bias: bool = True, name: Optional[str] = None):
+    def __init__(self, tied_to: Dense, activation: Optional[Union[str, Callable]] = None, use_bias: bool = True, name: Optional[str] = None):
         super().__init__(name=name)
         self.tied_to = tied_to
         self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
-        self.bias = None
+        self.bias: Optional[tf.Variable] = None
 
-    def build(self, input_shape):
+    def build(self, input_shape: tf.TensorShape) -> None:
         out_units = int(self.tied_to.kernel.shape[0])
         if self.use_bias:
             self.bias = self.add_weight(
                 name="bias", shape=(out_units,), initializer="zeros", trainable=True
             )
 
-    def call(self, inputs):
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
         y = tf.linalg.matmul(inputs, tf.transpose(self.tied_to.kernel))
         if self.bias is not None:
             y = y + self.bias
@@ -134,6 +135,7 @@ class NBDO(BaseOptimizer):
         D_flat = self.runs * num_features
 
         sampler = qmc.Sobol(d=D_flat, scramble=True, seed=effective_random_state)
+        warnings.simplefilter("ignore", category=UserWarning)
         X_unit = sampler.random(num_designs).astype(np.float32)
         X = 2.0 * X_unit - 1.0
 
@@ -220,12 +222,14 @@ class NBDO(BaseOptimizer):
 
     # --- loss -----------------------------------------------------------------
     def _get_custom_loss(self) -> Optional[Callable[[tf.Tensor, tf.Tensor], tf.Tensor]]:
-        """Get custom loss function for ScalarOnScalarModel A-optimality."""
+        """Get custom loss function for ScalarOnScalarModel."""
         if isinstance(self.model, ScalarOnScalarModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-                return self.model.objective_tf_from_flat(y_pred, self.runs, self.model.Kx)
+                # y_pred: (B, runs*Kx) — unified TF-first API
+                return self.model.objective_from_flat(y_pred, self.runs, self.model.Kx)
             return custom_loss
         return None
+
 
     # --- training -------------------------------------------------------------
     def fit(
@@ -309,11 +313,14 @@ class NBDO(BaseOptimizer):
             raise RuntimeError("Autoencoder not available. Call fit() first.")
 
         def objective(latent_var: List[float]) -> float:
-            z = np.array(latent_var, dtype=np.float32).reshape(1, -1)
-            decoded: np.ndarray = self.decoder.predict(z, verbose=0)
+            z = tf.convert_to_tensor([latent_var], dtype=tf.float32)   # (1, d)
+            decoded = self.decoder(z, training=False)                  # (1, runs*Kx) tensor
             if isinstance(self.model, ScalarOnScalarModel):
-                return float(self.model.objective_np_from_flat(decoded, m=self.runs, n=self.model.Kx))
-            return 0.0
+                loss_t = self.model.objective_from_flat(decoded, self.runs, self.model.Kx)  # (1,)
+                return float(tf.reshape(loss_t, ()).numpy())
+            else:
+                return 0.0
+
 
         dimensions: List[Tuple[float, float]] = [(-1.0, 1.0) for _ in range(self.latent_dim)]
         effective_random_state = self._get_random_state()
@@ -349,7 +356,8 @@ class NBDO(BaseOptimizer):
         self.optimal_criterion = res.fun
         self.optimal_design = self.decode(np.array(self.optimal_latent_var, dtype=np.float32).reshape(1, -1))
         try:
-            self.optimal_report = float(self.model.report_np(self.optimal_design))
+            self.optimal_report = float(self.model.report_num(self.optimal_design))
+
         except Exception:
             self.optimal_report = None  # fallback if something goes wrong
         self.search_history = res.x_iters

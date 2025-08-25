@@ -1,19 +1,68 @@
 from abc import ABC, abstractmethod
+from typing import Any, Union
 import numpy as np
 import tensorflow as tf
+from numpy.typing import NDArray
+from utils.backend import ArrayLike  # Union[np.ndarray, tf.Tensor]
 
 class BaseModel(ABC):
-    # NumPy path on (runs, Kx)
+    """
+    Pure interface (no implementations).
+    Subclasses (e.g., ScalarOnScalarModel) must implement these methods.
+    """
+
+    # Unified TF-first API on shaped inputs
     @abstractmethod
-    def objective_np(self, X: np.ndarray) -> float:
+    def model_matrix(self, X_batch: ArrayLike) -> tf.Tensor:
+        """
+        X_batch: (B, m, Kx) or (m, Kx) [np.ndarray or tf.Tensor]
+        Return: Z of shape (B, m, p)
+        """
         ...
 
-    # TF path on flattened input (batch, runs*Kx) – used by Keras loss
     @abstractmethod
-    def objective_tf_from_flat(self, X_flat: tf.Tensor, m: int, n: int) -> tf.Tensor:
+    def information_matrix(self, Z_batch: ArrayLike) -> tf.Tensor:
+        """
+        Z_batch: (B, m, p) or (m, p)
+        Return: M of shape (B, p, p)
+        """
         ...
 
-    # Convenience (shared default): reshape then call objective_np
-    def objective_np_from_flat(self, X_flat: np.ndarray, m: int, n: int) -> float:
-        X = np.asarray(X_flat, dtype=float).reshape(m, n)
-        return float(self.objective_np(X))
+    @abstractmethod
+    def objective(self, X_batch: ArrayLike) -> tf.Tensor:
+        """
+        X_batch: (B, m, Kx) or (m, Kx)
+        Return: loss (B,) tensor (or scalar for unbatched)
+        """
+        ...
+
+    @abstractmethod
+    def objective_from_flat(self, X_flat: ArrayLike, m: int, n: int) -> tf.Tensor:
+        """
+        X_flat: (B, m*n) or (m*n,)
+        Return: loss (B,) tensor (or scalar for unbatched)
+        """
+        ...
+
+    @abstractmethod
+    def report(self, X_batch: ArrayLike) -> tf.Tensor:
+        """
+        X_batch: (B, m, Kx) or (m, Kx)
+        Return: positive criterion (B,) tensor (or scalar for unbatched)
+        """
+        ...
+
+    # Numeric conveniences (used by BO / logging)
+    @abstractmethod
+    def objective_num(self, X: NDArray[np.floating]) -> float:
+        """
+        X: (m, Kx) ndarray -> Python float
+        """
+        ...
+
+    @abstractmethod
+    def report_num(self, X: NDArray[np.floating]) -> float:
+        """
+        X: (m, Kx) ndarray -> Python float (positive criterion)
+        """
+        ...

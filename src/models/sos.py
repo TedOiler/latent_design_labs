@@ -1,12 +1,12 @@
 from __future__ import annotations
 from typing import Any, List, Tuple
 from .base_model import BaseModel
-from optimalities.base_psi import BasePsi
+from criteria.base_psi import BasePsi
 import numpy as np
 import tensorflow as tf
 from numpy.typing import NDArray
 from itertools import combinations_with_replacement
-from optimalities import PsiA, PsiD, PsiG, PsiI
+from criteria import AOptimality, DOptimality, GOptimality, IOptimality
 from utils.backend import to_tensor, to_float, ArrayLike
 
 class ScalarOnScalarModel(BaseModel):
@@ -17,13 +17,13 @@ class ScalarOnScalarModel(BaseModel):
 
         c = str(criterion).upper()
         if c == "A":
-            self.psi: BasePsi = PsiA()
+            self.psi: BasePsi = AOptimality()
         elif c == "D":
-            self.psi = PsiD()
+            self.psi = DOptimality()
         elif c == "G":
-            self.psi = PsiG()
+            self.psi = GOptimality()
         elif c == "I":
-            self.psi = PsiI()
+            self.psi = IOptimality()
         else:
             (_ for _ in ()).throw(ValueError(f"Unknown {c}"))
 

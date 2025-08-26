@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 
 def relative_efficiency(d1: np.ndarray, d2: np.ndarray, model) -> float:
@@ -19,7 +20,7 @@ def relative_efficiency(d1: np.ndarray, d2: np.ndarray, model) -> float:
     M1 = model.information_matrix(Z1)
     M2 = model.information_matrix(Z2)
 
-    psi1 = model.psi.from_M_np(M1)  # e.g., trace(inv(M1)) or 1/det(M1)
-    psi2 = model.psi.from_M_np(M2)
-
-    return psi2 / psi1
+    psi1 = model.psi.loss_from_M_num(M1)
+    psi2 = model.psi.loss_from_M_num(M2)
+    
+    return psi2 / psi1  

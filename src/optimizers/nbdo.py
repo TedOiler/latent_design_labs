@@ -30,6 +30,7 @@ from skopt.utils import OptimizeResult
 
 from .base_optimizer import BaseOptimizer
 from models.sos import ScalarOnScalarModel
+from models.sof import ScalarOnFunctionModel
 from models.base_model import BaseModel
 
 
@@ -69,6 +70,7 @@ class NBDO(BaseOptimizer):
         latent_space_act: str = "tanh",
         output_layer_act: str = "tanh",
         seed: Optional[int] = None,
+        verbose: bool = False,
     ) -> None:
         """Initialize NBDO optimizer with model and architecture parameters."""
         if latent_dim <= 0:
@@ -82,6 +84,7 @@ class NBDO(BaseOptimizer):
         self.latent_space_act: str = latent_space_act
         self.output_layer_act: str = output_layer_act
         self.seed: Optional[int] = seed
+        self.verbose: bool = verbose
 
         self.input_dim: Optional[int] = None
         self.encoder: Optional[Model] = None
@@ -225,11 +228,20 @@ class NBDO(BaseOptimizer):
         """Get custom loss function for ScalarOnScalarModel."""
         if isinstance(self.model, ScalarOnScalarModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-                # y_pred: (B, runs*Kx) — unified TF-first API
+                # y_pred: (B, runs*Kx) — SoS path (no dtype attribute on the model)
                 return self.model.objective_from_flat(y_pred, self.runs, self.model.Kx)
             return custom_loss
-        return None
 
+        # --- SoF path: add a custom loss and cast to the model's dtype (float64 by default) ---
+        if isinstance(self.model, ScalarOnFunctionModel):
+            def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+                # decoder outputs float32; SoF model uses float64 internally → cast once
+                target_dtype = getattr(self.model, "dtype", y_pred.dtype)
+                y_pred = tf.cast(y_pred, target_dtype)
+                return self.model.objective_from_flat(y_pred, self.runs)
+            return custom_loss
+
+        return None
 
     # --- training -------------------------------------------------------------
     def fit(
@@ -255,7 +267,7 @@ class NBDO(BaseOptimizer):
 
         early_stopping = EarlyStopping(monitor="loss", patience=patience, restore_best_weights=True)
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="loss", factor=0.5, patience=max(3, patience // 3), min_lr=1e-5, verbose=0
+            monitor="loss", factor=0.5, patience=max(3, patience // 3), min_lr=1e-5, verbose=1 if self.verbose else 0
         )
 
         self.autoencoder.build(input_shape=(None, self.input_dim))
@@ -266,7 +278,7 @@ class NBDO(BaseOptimizer):
             batch_size=batch_size,
             callbacks=[early_stopping, reduce_lr],
             shuffle=False,
-            verbose=0,
+            verbose=1 if self.verbose else 0,
         )
         return self.history
 
@@ -287,13 +299,13 @@ class NBDO(BaseOptimizer):
         """Encode design vector to latent representation."""
         if self.encoder is None:
             raise RuntimeError("Encoder not available. Call fit() first.")
-        return self.encoder.predict(design.reshape(1, -1), verbose=0)
+        return self.encoder.predict(design.reshape(1, -1), verbose=1 if self.verbose else 0)
 
     def decode(self, latent: np.ndarray) -> np.ndarray:
         """Decode latent representation back to design space."""
         if self.decoder is None:
             raise RuntimeError("Decoder not available. Call fit() first.")
-        return self.decoder.predict(latent, verbose=0).reshape(self.runs, -1)
+        return self.decoder.predict(latent, verbose=1 if self.verbose else 0).reshape(self.runs, -1)
 
     # --- BO -------------------------------------------------------------------
     def optimize(
@@ -302,7 +314,6 @@ class NBDO(BaseOptimizer):
         acq_func: str = "EI",
         acq_optimizer: str = "sampling",
         n_random_starts: int = 5,
-        verbose: bool = False,
     ) -> Tuple[float, np.ndarray]:
         """Optimize design using Bayesian optimization in latent space."""
         if n_calls <= 0:
@@ -313,13 +324,24 @@ class NBDO(BaseOptimizer):
             raise RuntimeError("Autoencoder not available. Call fit() first.")
 
         def objective(latent_var: List[float]) -> float:
+            # latent → decoded design (flat)
             z = tf.convert_to_tensor([latent_var], dtype=tf.float32)   # (1, d)
-            decoded = self.decoder(z, training=False)                  # (1, runs*Kx) tensor
+            decoded = self.decoder(z, training=False)                  # (1, runs*Kx) float32
+
+            # Align dtypes with the model (SoF uses float64)
+            target_dtype = getattr(self.model, "dtype", decoded.dtype)
+            decoded = tf.cast(decoded, target_dtype)
+
+            # Delegate to the appropriate model path
             if isinstance(self.model, ScalarOnScalarModel):
                 loss_t = self.model.objective_from_flat(decoded, self.runs, self.model.Kx)  # (1,)
-                return float(tf.reshape(loss_t, ()).numpy())
+            elif isinstance(self.model, ScalarOnFunctionModel):
+                loss_t = self.model.objective_from_flat(decoded, self.runs)                 # (1,)
             else:
-                return 0.0
+                raise TypeError(f"Unsupported model type: {type(self.model)}")
+
+            # Return Python float for skopt
+            return float(tf.reshape(loss_t, ()).numpy())
 
 
         dimensions: List[Tuple[float, float]] = [(-1.0, 1.0) for _ in range(self.latent_dim)]
@@ -331,7 +353,7 @@ class NBDO(BaseOptimizer):
         rng = np.random.default_rng(effective_random_state)
         idx = rng.choice(len(self.train_set), size=M, replace=False)
 
-        Z0 = self.encoder.predict(self.train_set[idx], verbose=0).astype(np.float32)
+        Z0 = self.encoder.predict(self.train_set[idx], verbose=1 if self.verbose else 0).astype(np.float32)
 
         seed_vals: List[float] = [objective(z.tolist()) for z in Z0]
         order = np.argsort(seed_vals)[:K]
@@ -343,7 +365,7 @@ class NBDO(BaseOptimizer):
             dimensions,
             n_calls=n_calls,
             random_state=effective_random_state,
-            verbose=verbose,
+            verbose=1 if self.verbose else 0,
             n_jobs=1,
             n_random_starts=n_random_starts,
             acq_func=acq_func,

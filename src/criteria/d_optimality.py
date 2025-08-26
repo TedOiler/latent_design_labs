@@ -3,7 +3,7 @@ import tensorflow as tf
 from .base_psi import BasePsi
 from utils.backend import to_tensor, ArrayLike
 
-class PsiD(BasePsi):
+class DOptimality(BasePsi):
     def __init__(self, eps: float = 1e-6) -> None:
         self.eps: float = float(eps)
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Optional
 import numpy as np
 import tensorflow as tf
 from numpy.typing import NDArray
@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 from .base_model import BaseModel
 from bases.base import Basis
 from inner_products.jmatrix import JBuilder
+from inner_products.penalty import PenaltyBuilder
 from criteria import AOptimality, DOptimality
 
 
@@ -15,7 +16,7 @@ class ScalarOnFunctionModel(BaseModel):
     """
     Scalar-on-Function linear model with potentially multiple functional factors.
 
-    Notation (matches the paper/math):
+    Notation:
       - Γ (Gamma): design coefficients matrix, shape (runs, Kx_total)
       - J: block-diagonal cross-Gram matrix, shape (Kx_total, Kb_total), fixed
       - Z = [1, Γ J] if intercept=True else Γ J
@@ -32,6 +33,9 @@ class ScalarOnFunctionModel(BaseModel):
         intercept: bool = True,
         eps: float = 1e-6,
         dtype: tf.dtypes.DType = tf.float64,
+        lambda_penalty: float | None = None,
+        quad_points_penalty: int = 256,
+        diff_h: float = 1e-4,
     ) -> None:
         # config
         self.basis_pairs: List[Tuple[Basis, Basis]] = list(basis_pairs)
@@ -41,6 +45,11 @@ class ScalarOnFunctionModel(BaseModel):
         self.intercept: bool = bool(intercept)
         self.eps: float = float(eps)
         self.dtype = dtype
+        self.lambda_penalty = lambda_penalty          # NEW
+        if self.lambda_penalty is not None and self.lambda_penalty < 0:
+            raise ValueError("lambda_penalty must be non-negative or None")
+        self._pen_quad_pts = int(quad_points_penalty)
+        self._pen_diff_h = float(diff_h)
 
         # build J (NumPy) once; freeze as TF tensor for runtime
         jb = JBuilder(self.basis_pairs)
@@ -55,6 +64,24 @@ class ScalarOnFunctionModel(BaseModel):
 
         self._Kx_total: int = int(self.J_np.shape[0])
         self._Kb_total: int = int(self.J_np.shape[1])
+
+        # --- NEW: build padded penalty R once if λ is active ---
+        self.R: Optional[tf.Tensor] = None
+        if self.lambda_penalty is not None and self.lambda_penalty > 0:
+            # Parameter bases only (order must match J's column layout)
+            b_bases = [b for (_x, b) in self.basis_pairs]
+            R0_np = PenaltyBuilder(
+                b_bases=b_bases,
+                quad_points=self._pen_quad_pts,
+                diff_h=self._pen_diff_h,
+                boundary_scheme="one_sided",
+            ).build()  # (Kb, Kb)
+            if self.intercept:
+                R_np = np.zeros((self.Kb + 1, self.Kb + 1), dtype=R0_np.dtype)
+                R_np[1:, 1:] = R0_np  # leave intercept unpenalized
+            else:
+                R_np = R0_np
+            self.R = tf.constant(R_np, dtype=self.dtype)
 
         # choose Psi (numerically-stable A/D)
         if self.criterion == "A":
@@ -165,6 +192,13 @@ class ScalarOnFunctionModel(BaseModel):
         if added:
             M = tf.squeeze(M, axis=0)       # (p, p)
         return M
+    
+    # --- NEW: apply M -> M + λR if active ---
+    def _regularize_information(self, M: tf.Tensor) -> tf.Tensor:
+        if self.R is None or self.lambda_penalty in (None, 0.0):
+            return M
+        lam = tf.cast(self.lambda_penalty, self.dtype)
+        return M + tf.cast(self.lambda_penalty, self.dtype) * self.R
 
     # ---- Criterion (Psi) wiring -------------------------------------------
 
@@ -175,7 +209,8 @@ class ScalarOnFunctionModel(BaseModel):
         """
         Z = self.model_matrix(Gamma_batch)
         M = self.information_matrix(Z)
-        loss = self.psi.loss_from_M(M)  # Psi handles (p,p) or (B,p,p)
+        M = self._regularize_information(M)  # NEW
+        loss = self.psi.loss_from_M(M)
         return loss
 
     def report(self, Gamma_batch: tf.Tensor) -> tf.Tensor:
@@ -185,6 +220,7 @@ class ScalarOnFunctionModel(BaseModel):
         """
         Z = self.model_matrix(Gamma_batch)
         M = self.information_matrix(Z)
+        M = self._regularize_information(M)  # NEW
         score = self.psi.report_from_M(M)
         return score
 

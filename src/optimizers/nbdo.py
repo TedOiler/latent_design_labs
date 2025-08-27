@@ -16,7 +16,6 @@ import tensorflow as tf
 
 # Deterministic kernels + single-threaded math
 tf.config.experimental.enable_op_determinism()
-tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
 from tensorflow.keras.layers import Input, Dense

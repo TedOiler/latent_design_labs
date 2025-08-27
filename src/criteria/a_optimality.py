@@ -66,7 +66,7 @@ class AOptimality(BasePsi):
 
     def report_from_M(self, M: ArrayLike) -> tf.Tensor:
         """
-        Positive report for A-opt: 1 / trace(M^{-1}).
+        Positive report for A-opt: trace(M^{-1}).
         This mirrors D-opt using det(M) as the positive report.
         """
         loss = self.loss_from_M(M)

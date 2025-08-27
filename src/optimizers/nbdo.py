@@ -6,6 +6,7 @@ os.environ["TF_DETERMINISTIC_OPS"] = "1"
 os.environ["PYTHONHASHSEED"] = "0"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+from pyclbr import Function
 from typing import Any, Callable, List, Optional, Tuple, Union
 import warnings
 import gc
@@ -31,6 +32,7 @@ from skopt.utils import OptimizeResult
 from .base_optimizer import BaseOptimizer
 from models.sos import ScalarOnScalarModel
 from models.sof import ScalarOnFunctionModel
+from models.fof import FunctionOnFunctionModel
 from models.base_model import BaseModel
 
 
@@ -225,7 +227,7 @@ class NBDO(BaseOptimizer):
 
     # --- loss -----------------------------------------------------------------
     def _get_custom_loss(self) -> Optional[Callable[[tf.Tensor, tf.Tensor], tf.Tensor]]:
-        """Get custom loss function for ScalarOnScalarModel."""
+        """Get custom loss function for the current model."""
         if isinstance(self.model, ScalarOnScalarModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
                 # y_pred: (B, runs*Kx) — SoS path (no dtype attribute on the model)
@@ -234,6 +236,15 @@ class NBDO(BaseOptimizer):
 
         # --- SoF path: add a custom loss and cast to the model's dtype (float64 by default) ---
         if isinstance(self.model, ScalarOnFunctionModel):
+            def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+                # decoder outputs float32; SoF model uses float64 internally → cast once
+                target_dtype = getattr(self.model, "dtype", y_pred.dtype)
+                y_pred = tf.cast(y_pred, target_dtype)
+                return self.model.objective_from_flat(y_pred, self.runs)
+            return custom_loss
+        
+        # --- FoF path (explicit): identical to SoF today; will diverge later ---
+        if isinstance(self.model, FunctionOnFunctionModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
                 # decoder outputs float32; SoF model uses float64 internally → cast once
                 target_dtype = getattr(self.model, "dtype", y_pred.dtype)
@@ -337,6 +348,9 @@ class NBDO(BaseOptimizer):
                 loss_t = self.model.objective_from_flat(decoded, self.runs, self.model.Kx)  # (1,)
             elif isinstance(self.model, ScalarOnFunctionModel):
                 loss_t = self.model.objective_from_flat(decoded, self.runs)                 # (1,)
+            elif isinstance(self.model, FunctionOnFunctionModel):
+                # identical to SoF today; explicit branch for future divergence
+                loss_t = self.model.objective_from_flat(decoded, self.runs)
             else:
                 raise TypeError(f"Unsupported model type: {type(self.model)}")
 

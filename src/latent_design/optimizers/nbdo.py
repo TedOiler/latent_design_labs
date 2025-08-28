@@ -1,10 +1,6 @@
 from __future__ import annotations
-
-# --- Determinism must be set before importing TF ---
-import os
-os.environ["TF_DETERMINISTIC_OPS"] = "1"
-os.environ["PYTHONHASHSEED"] = "0"
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+from time import perf_counter
+from rich.progress import Progress, BarColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn, TextColumn
 
 from pyclbr import Function
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -14,9 +10,11 @@ import random
 import numpy as np
 import tensorflow as tf
 
-# Deterministic kernels + single-threaded math
-tf.config.experimental.enable_op_determinism()
-tf.config.threading.set_intra_op_parallelism_threads(1)
+def _policy_tf_dtype() -> tf.DType:
+    return tf.as_dtype(tf.keras.backend.floatx())
+
+def _policy_np_dtype():
+    return np.float64 if tf.keras.backend.floatx() == "float64" else np.float32
 
 from tensorflow.keras.layers import Input, Dense
 from tensorflow.keras.models import Model
@@ -57,6 +55,49 @@ class TiedDense(tf.keras.layers.Layer):
             y = y + self.bias
         return self.activation(y) if self.activation is not None else y
 
+# --- Progress bar for training ------------------------------------------------
+class _RichEpochProgress(tf.keras.callbacks.Callback):
+    def __init__(self, total_epochs: int, enable: bool):
+        super().__init__()
+        self.total_epochs = total_epochs
+        self.enable = enable
+        self._progress = None
+        self._task = None
+        self._completed = 0
+
+    def on_train_begin(self, logs=None):
+        if not self.enable:
+            return
+        self._progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]AE training[/]"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            transient=False,
+        )
+        self._progress.start()
+        self._task = self._progress.add_task("epochs", total=self.total_epochs)
+
+    def on_epoch_end(self, epoch, logs=None):
+        if self._progress:
+            self._progress.update(self._task, advance=1)
+        # Optional external hook
+        try:
+            if hasattr(self.model, "_nbdo_owner") and getattr(self.model._nbdo_owner, "progress_hook", None):
+                getattr(self.model._nbdo_owner, "progress_hook")({
+                    "phase": "fit",
+                    "epoch": int(epoch) + 1,
+                    "total_epochs": int(self.total_epochs),
+                    "loss": None if logs is None else float(logs.get("loss", float("nan"))),
+                })
+        except Exception:
+            pass
+
+    def on_train_end(self, logs=None):
+        if self._progress:
+            self._progress.stop()
 
 # --- NBDO ---------------------------------------------------------------------
 class NBDO(BaseOptimizer):
@@ -107,7 +148,11 @@ class NBDO(BaseOptimizer):
         self.search_history: Optional[List[List[float]]] = None
         self.eval_history: Optional[List[float]] = None
 
+        self.time_fit_s: Optional[float] = None
+        self.time_bo_s: Optional[float] = None
+        self.time_total_s: Optional[float] = None
 
+        self.progress_hook: Optional[Callable[[dict], None]] = None
 
         if self.seed is not None:
             self._set_all_seeds(self.seed)
@@ -140,14 +185,17 @@ class NBDO(BaseOptimizer):
 
         sampler = qmc.Sobol(d=D_flat, scramble=True, seed=effective_random_state)
         warnings.simplefilter("ignore", category=UserWarning)
-        X_unit = sampler.random(num_designs).astype(np.float32)
+        dtype_np = _policy_np_dtype()
+        X_unit = sampler.random(num_designs).astype(dtype_np)
         X = 2.0 * X_unit - 1.0
 
         # include exact corners to ensure boundaries are reachable during training
         X = np.concatenate(
-            [X,
-             np.full((1, D_flat), -1.0, dtype=np.float32),
-             np.full((1, D_flat),  1.0, dtype=np.float32)],
+            [
+                X,
+                np.full((1, D_flat), -1.0, dtype=dtype_np),
+                np.full((1, D_flat),  1.0, dtype=dtype_np),
+            ],
             axis=0
         )
 
@@ -236,18 +284,18 @@ class NBDO(BaseOptimizer):
         # --- SoF path: add a custom loss and cast to the model's dtype (float64 by default) ---
         if isinstance(self.model, ScalarOnFunctionModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-                # decoder outputs float32; SoF model uses float64 internally → cast once
                 target_dtype = getattr(self.model, "dtype", y_pred.dtype)
-                y_pred = tf.cast(y_pred, target_dtype)
+                if y_pred.dtype != target_dtype:
+                    y_pred = tf.cast(y_pred, target_dtype)
                 return self.model.objective_from_flat(y_pred, self.runs)
             return custom_loss
         
         # --- FoF path (explicit): identical to SoF today; will diverge later ---
         if isinstance(self.model, FunctionOnFunctionModel):
             def custom_loss(_y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-                # decoder outputs float32; SoF model uses float64 internally → cast once
                 target_dtype = getattr(self.model, "dtype", y_pred.dtype)
-                y_pred = tf.cast(y_pred, target_dtype)
+                if y_pred.dtype != target_dtype:
+                    y_pred = tf.cast(y_pred, target_dtype)
                 return self.model.objective_from_flat(y_pred, self.runs)
             return custom_loss
 
@@ -271,14 +319,22 @@ class NBDO(BaseOptimizer):
         if self.train_set is None:
             raise RuntimeError("Must call compute_train_set() before fit()")
 
+        t0 = perf_counter()
+
         self._build_autoencoder()
+        try:
+            self.autoencoder._nbdo_owner = self
+        except Exception:
+            pass
+
         custom_loss = self._get_custom_loss()
         self.autoencoder.compile(optimizer=optimizer, loss=custom_loss)
 
         early_stopping = EarlyStopping(monitor="loss", patience=patience, restore_best_weights=True)
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="loss", factor=0.5, patience=max(3, patience // 3), min_lr=1e-5, verbose=1 if self.verbose else 0
+            monitor="loss", factor=0.5, patience=max(3, patience // 3), min_lr=1e-5, verbose=0
         )
+        rich_cb = _RichEpochProgress(total_epochs=epochs, enable=self.verbose)  # <<< rich progress bar
 
         self.autoencoder.build(input_shape=(None, self.input_dim))
         self.history = self.autoencoder.fit(
@@ -286,12 +342,14 @@ class NBDO(BaseOptimizer):
             self.train_set,
             epochs=epochs,
             batch_size=batch_size,
-            callbacks=[early_stopping, reduce_lr],
+            callbacks=[early_stopping, reduce_lr, rich_cb],
             shuffle=False,
-            verbose=1 if self.verbose else 0,
+            verbose=0,
         )
+        self.time_fit_s = perf_counter() - t0
+        self.time_total_s = (self.time_fit_s or 0.0) + (self.time_bo_s or 0.0)
         return self.history
-
+        
     # --- memory ---------------------------------------------------------------
     def clear_memory(self) -> None:
         """Free TF/keras objects and clear graph state."""
@@ -309,13 +367,13 @@ class NBDO(BaseOptimizer):
         """Encode design vector to latent representation."""
         if self.encoder is None:
             raise RuntimeError("Encoder not available. Call fit() first.")
-        return self.encoder.predict(design.reshape(1, -1), verbose=1 if self.verbose else 0)
+        return self.encoder.predict(design.reshape(1, -1), verbose=0)
 
     def decode(self, latent: np.ndarray) -> np.ndarray:
         """Decode latent representation back to design space."""
         if self.decoder is None:
             raise RuntimeError("Decoder not available. Call fit() first.")
-        return self.decoder.predict(latent, verbose=1 if self.verbose else 0).reshape(self.runs, -1)
+        return self.decoder.predict(latent, verbose=0).reshape(self.runs, -1)
 
     # --- BO -------------------------------------------------------------------
     def optimize(
@@ -335,12 +393,13 @@ class NBDO(BaseOptimizer):
 
         def objective(latent_var: List[float]) -> float:
             # latent → decoded design (flat)
-            z = tf.convert_to_tensor([latent_var], dtype=tf.float32)   # (1, d)
+            z = tf.convert_to_tensor([latent_var], dtype=_policy_tf_dtype())   # (1, d)
             decoded = self.decoder(z, training=False)                  # (1, runs*Kx) float32
 
             # Align dtypes with the model (SoF uses float64)
             target_dtype = getattr(self.model, "dtype", decoded.dtype)
-            decoded = tf.cast(decoded, target_dtype)
+            if decoded.dtype != target_dtype:
+                decoded = tf.cast(decoded, target_dtype)
 
             # Delegate to the appropriate model path
             if isinstance(self.model, ScalarOnScalarModel):
@@ -356,7 +415,6 @@ class NBDO(BaseOptimizer):
             # Return Python float for skopt
             return float(tf.reshape(loss_t, ()).numpy())
 
-
         dimensions: List[Tuple[float, float]] = [(-1.0, 1.0) for _ in range(self.latent_dim)]
         effective_random_state = self._get_random_state()
 
@@ -366,30 +424,71 @@ class NBDO(BaseOptimizer):
         rng = np.random.default_rng(effective_random_state)
         idx = rng.choice(len(self.train_set), size=M, replace=False)
 
-        Z0 = self.encoder.predict(self.train_set[idx], verbose=1 if self.verbose else 0).astype(np.float32)
+        Z0 = self.encoder.predict(self.train_set[idx], verbose=0)
 
         seed_vals: List[float] = [objective(z.tolist()) for z in Z0]
         order = np.argsort(seed_vals)[:K]
         x0 = [Z0[i].tolist() for i in order]
         y0 = [float(seed_vals[i]) for i in order]
 
-        res: OptimizeResult = gp_minimize(
-            objective,
-            dimensions,
-            n_calls=n_calls,
-            random_state=effective_random_state,
-            verbose=1 if self.verbose else 0,
-            n_jobs=1,
-            n_random_starts=n_random_starts,
-            acq_func=acq_func,
-            acq_optimizer=acq_optimizer,
-            x0=x0,
-            y0=y0,
-        )
+        t1 = perf_counter()  # <<< start timing BO
+
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]Bayesian Optimization[/]"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            transient=False,
+        ) if self.verbose else None
+
+        def _bo_progress_cb(res_obj):
+            # skopt calls after each iteration
+            if progress:
+                progress.update(task, advance=1)
+            # Optional external hook for a web UI
+            try:
+                if self.progress_hook:
+                    self.progress_hook({
+                        "phase": "bo",
+                        "iters_completed": len(res_obj.x_iters),
+                        "iters_total": int(n_calls),
+                        "best_so_far": float(res_obj.fun) if hasattr(res_obj, "fun") else None,
+                    })
+            except Exception:
+                pass
+        
+        if progress:
+            progress.start()
+            task = progress.add_task("bo", total=n_calls)
+        try:
+            res: OptimizeResult = gp_minimize(
+                objective,
+                dimensions,
+                n_calls=n_calls,
+                random_state=effective_random_state,
+                verbose=0,
+                n_jobs=1,
+                n_random_starts=n_random_starts,
+                acq_func=acq_func,
+                acq_optimizer=acq_optimizer,
+                x0=x0,
+                y0=y0,
+                callback=[_bo_progress_cb]
+            )
+        finally:
+            if progress:
+                progress.stop()
+        
+        self.time_bo_s = perf_counter() - t1      # <<< stop timing
+        self.time_total_s = (self.time_fit_s or 0.0) + (self.time_bo_s or 0.0)
 
         self.optimal_latent_var = res.x
         self.optimal_criterion = res.fun
-        self.optimal_design = self.decode(np.array(self.optimal_latent_var, dtype=np.float32).reshape(1, -1))
+        latent_arr = np.array(self.optimal_latent_var, dtype=_policy_np_dtype()).reshape(1, -1)
+        self.optimal_design = self.decode(latent_arr)
+
         try:
             self.optimal_report = float(self.model.report_num(self.optimal_design))
 

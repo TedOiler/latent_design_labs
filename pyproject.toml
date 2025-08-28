@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Latent Design Labs", email = "contact@latentdesignlabs.com"}
+    {name = "tedoiler", email = "ladas.thodoris@gmail.com"}
 ]
 keywords = ["experimental-design", "optimization", "statistics", "machine-learning"]
 classifiers = [

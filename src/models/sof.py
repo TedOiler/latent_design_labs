@@ -106,6 +106,10 @@ class ScalarOnFunctionModel(BaseModel):
         """Number of columns in Z: Kb + 1 if intercept else Kb."""
         return self.Kb + (1 if self.intercept else 0)
 
+    @property
+    def effective_p(self) -> int:  # For parity with FoF
+        return self.p
+
     # ---- helpers -----------------------------------------------------------
 
     def _as_batched_gamma(self, Gamma: tf.Tensor):

@@ -1,0 +1,14 @@
+{
+    "model": "sos",
+    "criterion": "A",
+    "kx": 10,
+    "sos_order": 1,
+    "runs": 25,
+    "latent_dim": 10,
+    "epochs": 1000,
+    "n_calls": 30,
+    "num_designs": 1000,
+    "verbose": true,
+    "tag": "sos_k3_o2_r25"
+  }
+  

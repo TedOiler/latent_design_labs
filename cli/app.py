@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional, List, Any, Dict
+import subprocess, shlex
 
 import os, sys, contextlib
 # os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
@@ -84,7 +85,7 @@ class Penalties:
 
 @dataclass
 class RunSpec:
-    model: str                  # "sos" | "sof" | "fof"
+    model: str
     criterion: Criterion
     runs: int
     latent_dim: int
@@ -98,9 +99,12 @@ class RunSpec:
     results_dir: str = "results"
     num_designs: int = 1000
     intercept: bool = True
-    predictors: List[PredictorSpec] = field(default_factory=list)   # sos ignores
-    response: ResponseSpec = field(default_factory=ResponseSpec)    # sos/sof ignore
+    kx: Optional[int] = None
+    sos_order: int = 1
+    predictors: List[PredictorSpec] = field(default_factory=list)
+    response: ResponseSpec = field(default_factory=ResponseSpec)
     penalties: Penalties = field(default_factory=Penalties)
+
 
 # ---------- tiny IO helpers ----------
 def read_config(path: Path) -> Dict[str, Any]:
@@ -144,9 +148,13 @@ def build_basis(b: BasisSpec):
 
 def build_model(spec: RunSpec):
     if spec.model == "sos":
-        return ScalarOnScalarModel(Kx=spec.predictors and len(spec.predictors) or spec.runs,
-                                   criterion=spec.criterion.value,  # reuse your original behavior
-                                   order=1)
+        if spec.kx is None:
+            raise typer.BadParameter("For 'sos', please provide 'kx' in the config (or -o kx=...).")
+        return ScalarOnScalarModel(
+            Kx=int(spec.kx),
+            criterion=spec.criterion.value,
+            order=int(spec.sos_order),
+        )
     if spec.model == "sof":
         pairs = [(build_basis(p.x), build_basis(p.b)) for p in (spec.predictors or [])]
         kwargs = dict(basis_pairs=pairs, criterion=spec.criterion.value, intercept=spec.intercept)
@@ -183,17 +191,56 @@ def run_once(spec: RunSpec):
         eig, _ = eigen_spectrum(M)
         kappa2 = condition_number(M)
         h = leverage_diag(mdl, Gamma)
+        A_rep, D_rep = None, None
+        try:
+            if spec.model == "sos":
+                if spec.kx is None:
+                    raise typer.BadParameter("For 'sos' reporters, 'kx' must be set (use -o kx=...).")
+                A_rep = ScalarOnScalarModel(
+                    Kx=int(spec.kx),
+                    criterion="A",
+                    order=int(spec.sos_order),
+                ).report(Gamma)
+                D_rep = ScalarOnScalarModel(
+                    Kx=int(spec.kx),
+                    criterion="D",
+                    order=int(spec.sos_order),
+                ).report(Gamma)
+
+            elif spec.model == "sof":
+                pairs = [(build_basis(p.x), build_basis(p.b)) for p in (spec.predictors or [])]
+                kwargs = dict(basis_pairs=pairs, intercept=spec.intercept)
+                if spec.penalties.lambda_s > 0:
+                    kwargs["lambda_penalty"] = float(spec.penalties.lambda_s)
+
+                A_rep = ScalarOnFunctionModel(criterion="A", **kwargs).report(Gamma)
+                D_rep = ScalarOnFunctionModel(criterion="D", **kwargs).report(Gamma)
+
+            elif spec.model == "fof":
+                pairs = [(build_basis(p.x), build_basis(p.b)) for p in (spec.predictors or [])]
+                rbasis = build_basis(spec.response.y) if spec.response and spec.response.y else None
+                kwargs = dict(basis_pairs=pairs, intercept=spec.intercept, response_basis=rbasis)
+                if spec.penalties.lambda_s > 0:
+                    kwargs["lambda_s"] = float(spec.penalties.lambda_s)
+                if spec.penalties.lambda_t > 0:
+                    kwargs["lambda_t"] = float(spec.penalties.lambda_t)
+
+                A_rep = FunctionOnFunctionModel(criterion="A", **kwargs).report(Gamma)
+                D_rep = FunctionOnFunctionModel(criterion="D", **kwargs).report(Gamma)
+        except Exception:
+            pass
 
     # write (keep your existing TSV writer, or output JSONL)
     out_dir = Path(spec.results_dir); out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "results.jsonl"
     row = dict(
         model=spec.model, criterion=spec.criterion.value, runs=spec.runs, tag=spec.tag or "",
-        A_opt=None, D_opt=None,  # fill using your reporter if desired
+        A_opt=(None if A_rep is None else float(A_rep)),
+        D_opt=(None if D_rep is None else float(D_rep)),
         lambda_min=float(eig[-1]), lambda_max=float(eig[0]), kappa2=float(kappa2),
         leverage_min=float(h.min()), leverage_max=float(h.max()), leverage_mean=float(h.mean()),
-        design=Gamma.tolist(),
         nbdo_time_s=nbdo.time_fit_s, bo_time_s=nbdo.time_bo_s, total_time_s=nbdo.time_total_s,
+        design=Gamma.tolist(),
     )
     with out_path.open("a") as f:
         f.write(json.dumps(row) + "\n")
@@ -242,6 +289,11 @@ def run(
             results_dir=d.get("results_dir", "results"),
             num_designs=int(d.get("num_designs", 1000)),
             intercept=bool(d.get("intercept", True)),
+
+            # NEW:
+            kx=(int(d["kx"]) if "kx" in d else int(d["Kx"]) if "Kx" in d else None),
+            sos_order=int(d.get("sos_order", d.get("order", 1))),
+
             predictors=preds,
             response=response,
             penalties=Penalties(lambda_s=float(d.get("lambda_s", 0.0)),
@@ -289,6 +341,35 @@ def run(
         return
 
     raise typer.BadParameter("Config must be a dict (single/sweep) or a list of experiment dicts.")
+
+@app.command("batch")
+def batch(
+    file: Path = typer.Option(..., "--file", "-f", help="Path to a cmds.txt file"),
+    stop_on_error: bool = typer.Option(True, help="Stop at the first failing command"),
+):
+    """
+    Run multiple CLI commands from a text file, one per line.
+    Lines starting with '#' or blank lines are ignored.
+    Each line is executed in a fresh subprocess to avoid TF session state.
+    """
+    text = Path(file).read_text()
+    lines = text.splitlines()
+
+    for lineno, raw in enumerate(lines, start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        typer.echo(f"→ [{lineno}] {line}")
+        # Use the shell so you can write lines exactly like you would in the terminal:
+        # e.g., `nbdo run -c cfgs/fof.json -o tag=paper1 -o runs=12`
+        result = subprocess.run(line, shell=True)
+        if result.returncode != 0:
+            typer.echo(f"✗ Command {lineno} failed with exit code {result.returncode}")
+            if stop_on_error:
+                raise typer.Exit(result.returncode)
+
+    typer.echo("✔ Batch complete.")
 
 def main():
     app()

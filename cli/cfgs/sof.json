@@ -1,0 +1,24 @@
+{
+    "model": "sof",
+    "criterion": "A",
+    "runs": 12,
+    "latent_dim": 4,
+    "epochs": 800,
+    "n_calls": 30,
+    "num_designs": 1000,
+    "verbose": true,
+    "intercept": true,
+    "predictors": [
+      {
+        "x": { "family": "bspline", "degree": 3, "knots": 12 },
+        "b": { "family": "bspline", "degree": 3, "knots": 12 }
+      },
+      {
+        "x": { "family": "bspline", "degree": 3, "knots": 10 },
+        "b": { "family": "bspline", "degree": 3, "knots": 10 }
+      }
+    ],
+    "lambda_s": 0.0,
+    "tag": "sof_base"
+  }
+  

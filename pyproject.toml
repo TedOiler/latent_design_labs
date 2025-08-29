@@ -50,4 +50,4 @@ where = ["src", "."]
 "*" = ["*.txt", "*.md", "*.yml", "*.yaml"]
 
 [project.scripts]
-nbdo = "cli.app:app"
+nbdo = "cli.app:main"

@@ -1,0 +1,25 @@
+{
+    "sweep_tag": "overnight",
+    "defaults": {
+      "model": "fof",
+      "criterion": "A",
+      "latent_dim": 4,
+      "epochs": 100,
+      "patience":10,
+      "n_calls": 30,
+      "num_designs": 1000,
+      "verbose": true,
+      "predictors": [
+        { "x": {"family":"bspline","degree":3,"knots":12},
+          "b": {"family":"bspline","degree":3,"knots":12} }
+      ],
+      "response": { "y": {"family":"fourier","harmonics":2, "include_const": true} }
+    },
+    "experiments": [
+      { "runs": 12, "lambda_s": 0.0, "lambda_t": 0.0, "tag": "r12_base" },
+      { "runs": 12, "lambda_s": 0.1, "lambda_t": 0.0, "tag": "r12_ls01" },
+      { "runs": 12, "lambda_s": 0.1, "lambda_t": 0.1, "tag": "r12_ls01_lt01" },
+      { "runs": 20, "lambda_s": 0.1, "lambda_t": 0.1, "tag": "r20_ls01_lt01" }
+    ]
+  }
+  

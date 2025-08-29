@@ -33,7 +33,7 @@ class ScalarOnScalarModel(BaseModel):
             for o in range(1, self.order + 1)
             for combo in combinations_with_replacement(range(self.Kx), o)
         ]
-        self.num_params: int = (1 if self.const else 0) + len(self.monomial_combos)
+        self.effective_p: int = (1 if self.const else 0) + len(self.monomial_combos)
 
     # 1) Raw design (NumPy checker — optional convenience)
     def design_matrix(self, X: NDArray[np.floating]) -> NDArray[np.floating]:

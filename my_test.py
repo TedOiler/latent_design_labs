@@ -38,10 +38,10 @@ def main():
 
     model = FunctionOnFunctionModel(
         basis_pairs=[(x1, b1), (x2, b2)],
-        criterion="A",            # A-opt: numerically robust for sanity checks
+        criterion="D",            # A-opt: numerically robust for sanity checks
         intercept=True,
-        lambda_s=0.1,
-        lambda_t=0.1,
+        lambda_s=0.001,
+        lambda_t=0.01,
         response_basis=resp_basis,
         quad_points_penalty=64,   # keep integration light
         eps=1e-6,
@@ -56,16 +56,16 @@ def main():
 
 
     opt.compute_train_set(num_designs=128, runs=runs, random_state=42)
-    hist = opt.fit(epochs=15, batch_size=64, patience=3)
+    hist = opt.fit(epochs=1_000, batch_size=64, patience=100)
 
-    report, design = opt.optimize(n_calls=6, n_random_starts=3)
+    report, design = opt.optimize(n_calls=50, n_random_starts=3)
 
     print("\n=== RESULTS ===")
     print("A-opt report:", report)
     print("Design shape:", design.shape)
     print("First row (rounded):", np.round(design[0], 4))
     print("report_num(design):", model.report_num(design))
-    print(f"\nTimings: NBDO fit = {opt.time_fit_s:.3f}s | BO = {opt.time_bo_s:.3f}s | total = {opt.time_total_s:.3f}s")
+    print(f"\nTimings: NBDO fit = {opt.time_fit_s:.2f}s | BO = {opt.time_bo_s:.2f}s | total = {opt.time_total_s:.2f}s")
 
 if __name__ == "__main__":
     main()

@@ -4,20 +4,20 @@
     "runs": 20,
     "latent_dim": 4,
     "epochs": 1000,
-    "n_calls": 30,
+    "n_calls": 50,
     "num_designs": 1000,
-    "patience": 100,
+    "patience": 200,
     "verbose": true,
   
     "predictors": [
       {
         "x": { "family": "bspline", "degree": 3, "knots": 14 },
-        "b": { "family": "bspline", "degree": 3, "knots": 14 }
+        "b": { "family": "bspline", "degree": 3, "knots": 7 }
       }
     ],
   
     "response": {
-      "y": { "family": "fourier", "harmonics": 3, "include_const": true }
+      "y": { "family": "fourier", "harmonics": 10, "include_const": true }
     },
   
     "lambda_s": 0.0,

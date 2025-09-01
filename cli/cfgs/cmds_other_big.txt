@@ -1,0 +1,17 @@
+# cmds_other_big.txt
+# ========== FoF — Big 10-factor design (A-only) ==========
+# Config: cfgs/fof_others_e4.json (runs=100, 10 predictors, Kx=10, Kb=8, L=7)
+
+# --- s-only sweep (λt = 0) ---
+# nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.000_lt0.000 -o lambda_s=0.000 -o lambda_t=0.000
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.025_lt0.000 -o lambda_s=0.025 -o lambda_t=0.000
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.050_lt0.000 -o lambda_s=0.050 -o lambda_t=0.000
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.075_lt0.000 -o lambda_s=0.075 -o lambda_t=0.000
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.100_lt0.000 -o lambda_s=0.100 -o lambda_t=0.000
+
+# --- s + t cross-section (fix λt = 0.050; sweep λs) ---
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.000_lt0.050 -o lambda_s=0.000 -o lambda_t=0.050
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.025_lt0.050 -o lambda_s=0.025 -o lambda_t=0.050
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.050_lt0.050 -o lambda_s=0.050 -o lambda_t=0.050
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.075_lt0.050 -o lambda_s=0.075 -o lambda_t=0.050
+nbdo run -c cfgs/fof_others_e4.json -o tag=E4_ls0.100_lt0.050 -o lambda_s=0.100 -o lambda_t=0.050

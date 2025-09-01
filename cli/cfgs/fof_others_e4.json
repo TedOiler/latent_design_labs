@@ -1,0 +1,34 @@
+{
+    "model": "fof",
+    "criterion": "A",
+    "runs": 100,
+    "latent_dim": 8,
+    "epochs": 10000,
+    "n_calls": 80,
+    "num_designs": 10000,
+    "patience": 500,
+    "batch_size": 1024,
+    "verbose": true,
+  
+    "predictors": [
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } },
+      { "x": { "family": "bspline", "degree": 3, "knots": 10 }, "b": { "family": "bspline", "degree": 3, "knots": 8 } }
+    ],
+  
+    "response": {
+      "y": { "family": "fourier", "harmonics": 3, "include_const": true }
+    },
+  
+    "lambda_s": 0.0,
+    "lambda_t": 0.0,
+    "tag": "E4_10f_bs3k10_b3k8_L7"
+  }
+  

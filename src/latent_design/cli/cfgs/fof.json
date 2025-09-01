@@ -1,24 +1,27 @@
 {
     "model": "fof",
     "criterion": "A",
-    "runs": 24,
+    "runs": 20,
     "latent_dim": 4,
     "epochs": 1000,
     "n_calls": 30,
     "num_designs": 1000,
     "patience": 100,
     "verbose": true,
+  
     "predictors": [
       {
-        "x": { "family": "bspline", "degree": 3, "knots": 12 },
-        "b": { "family": "bspline", "degree": 3, "knots": 10 }
+        "x": { "family": "bspline", "degree": 3, "knots": 14 },
+        "b": { "family": "bspline", "degree": 3, "knots": 14 }
       }
     ],
+  
     "response": {
       "y": { "family": "fourier", "harmonics": 3, "include_const": true }
     },
+  
     "lambda_s": 0.0,
     "lambda_t": 0.0,
-    "tag": "E1_bs3k12_b3k10"
+    "tag": "base"
   }
   

@@ -73,10 +73,10 @@ def main():
         success = False
     
     # Test CLI
-    if not run_command("latent-design version", "Testing CLI version command"):
+    if not run_command("nbdo --help", "Testing CLI help command"):
         success = False
-    
-    if not run_command("latent-design info", "Testing CLI info command"):
+    # Optional: ensure run subcommand is present
+    if not run_command("nbdo run --help", "Testing CLI run subcommand"):
         success = False
     
     # Test running tests

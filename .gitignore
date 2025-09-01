@@ -211,3 +211,9 @@ __marimo__/
 **/.vscode
 /results/
 cmds.txt
+# OS files
+.DS_Store
+
+# Local run outputs
+/results/
+/cli/results/

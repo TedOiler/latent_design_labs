@@ -9,10 +9,13 @@ description = "A Python package for experimental design and optimization using v
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
+
 authors = [
     {name = "tedoiler", email = "ladas.thodoris@gmail.com"}
 ]
+
 keywords = ["experimental-design", "optimization", "statistics", "machine-learning"]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -25,6 +28,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Information Analysis",
 ]
+
 dependencies = [
     "matplotlib>=3.9.4",
     "numpy>=2.0.2",
@@ -43,11 +47,14 @@ Documentation = "https://latent-design-labs.readthedocs.io/"
 Repository = "https://github.com/yourusername/latent_design_labs"
 Issues = "https://github.com/yourusername/latent_design_labs/issues"
 
+[project.scripts]
+nbdo = "latent_design.cli.app:main"
+
+[tool.setuptools]
+
 [tool.setuptools.packages.find]
 where = ["src", "."]
+include = ["latent_design*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.txt", "*.md", "*.yml", "*.yaml"]
-
-[project.scripts]
-nbdo = "cli.app:main"
+"*" = ["*.txt", "*.md", "*.yml", "*.yaml", "*.json", "*.jsonl"]

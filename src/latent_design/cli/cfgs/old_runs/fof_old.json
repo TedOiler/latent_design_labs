@@ -1,0 +1,17 @@
+{
+  "model": "fof",
+  "criterion": "A",
+  "runs": 12,
+  "latent_dim": 3,
+  "epochs": 200,
+  "n_calls": 20,
+  "predictors": [
+    {
+      "x": { "family": "poly", "degree": 2 },
+      "b": { "family": "poly", "degree": 2 }
+    }
+  ],
+  "lambda_s": 0.0,
+  "lambda_t": 0.0,
+  "tag": "old_example"
+}

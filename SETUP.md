@@ -45,9 +45,8 @@ uv pip install -e ".[dev]"
 python install_dev.py
 
 # Or test manually
-latent-design version
-latent-design info
-latent-design example
+nbdo --help
+nbdo run --help
 ```
 
 ## Alternative Setup (using pip)
@@ -101,11 +100,11 @@ If you get import errors like "No module named 'latent_design'":
 3. Try reinstalling: `pip install -e .`
 
 ### CLI Not Found
-If `latent-design` command is not found:
+If `nbdo` command is not found:
 
 1. Make sure you're in the virtual environment
 2. Check that the package is installed correctly
-3. Try: `python -m latent_design.cli version`
+3. Try: `python -m latent_design.cli`
 
 ### Dependency Conflicts
 If you get dependency version conflicts:

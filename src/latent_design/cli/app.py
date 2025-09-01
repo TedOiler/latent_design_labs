@@ -36,6 +36,7 @@ def _mute_os_stderr():
 
 
 import json
+import importlib.resources as ir
 import typer
 
 from latent_design.utils.tf_env import initialize as tf_initialize
@@ -107,9 +108,27 @@ class RunSpec:
 
 
 # ---------- tiny IO helpers ----------
+def _read_text_from_path_or_resource(path: Path, resource_pkg: str, resource_subdir: str | None = None) -> str:
+    """
+    Read text from a filesystem path if it exists; otherwise, try to read
+    from package resources under `resource_pkg[/resource_subdir]`.
+    """
+    p = Path(path)
+    if p.exists():
+        return p.read_text()
+    name = p.name
+    try:
+        base = ir.files(resource_pkg)
+        if resource_subdir:
+            base = base.joinpath(resource_subdir)
+        data = (base / name).read_text(encoding="utf-8")
+        return data
+    except Exception as e:
+        raise typer.BadParameter(f"Config not found: {path}")
+
+
 def read_config(path: Path) -> Dict[str, Any]:
-    text = Path(path).read_text()
-    # keep JSON for zero deps; if you prefer TOML, use tomllib
+    text = _read_text_from_path_or_resource(path, "latent_design.cli", resource_subdir="cfgs")
     return json.loads(text)
 
 def apply_overrides(cfg: Dict[str, Any], overrides: List[str]) -> Dict[str, Any]:
@@ -352,7 +371,11 @@ def batch(
     Lines starting with '#' or blank lines are ignored.
     Each line is executed in a fresh subprocess to avoid TF session state.
     """
-    text = Path(file).read_text()
+    try:
+        text = _read_text_from_path_or_resource(file, "latent_design.cli", resource_subdir="cfgs")
+    except Exception:
+        # fall back to filesystem error if nothing else worked
+        text = Path(file).read_text()
     lines = text.splitlines()
 
     for lineno, raw in enumerate(lines, start=1):
@@ -362,7 +385,7 @@ def batch(
 
         typer.echo(f"→ [{lineno}] {line}")
         # Use the shell so you can write lines exactly like you would in the terminal:
-        # e.g., `nbdo run -c cfgs/fof.json -o tag=paper1 -o runs=12`
+        # e.g., `nbdo run -c fof.json -o tag=paper1 -o runs=12`
         result = subprocess.run(line, shell=True)
         if result.returncode != 0:
             typer.echo(f"✗ Command {lineno} failed with exit code {result.returncode}")

@@ -57,6 +57,17 @@ model = FOF(basis=basis, criterion=criterion)
 # Your experimental design code here...
 ```
 
+## CLI Quick Start
+
+```bash
+# Single run from a packaged config (resolved by name)
+nbdo run -c fof_paper.json -o tag=demo
+
+# Batch: execute multiple commands from a packaged file
+nbdo batch -f cmds_paper.txt
+nbdo --help
+```
+
 ## Project Structure
 
 ```

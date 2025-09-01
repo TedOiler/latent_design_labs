@@ -2,40 +2,40 @@
 # ========== FoF (Function-on-Function, A-optimality sweeps) ==========
 
 # Baseline
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.000 -o lambda_s=0.000 -o lambda_t=0.00
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.000 -o lambda_s=0.000 -o lambda_t=0.000
 
 # λs sweep, λt=0
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.125_lt0.000 -o lambda_s=0.125 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.250_lt0.000 -o lambda_s=0.250 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.375_lt0.000 -o lambda_s=0.375 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.625_lt0.000 -o lambda_s=0.625 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.750_lt0.000 -o lambda_s=0.750 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.875_lt0.000 -o lambda_s=0.875 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls1.000_lt0.000 -o lambda_s=1.000 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.125_lt0.000 -o lambda_s=0.125 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.250_lt0.000 -o lambda_s=0.250 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.375_lt0.000 -o lambda_s=0.375 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.625_lt0.000 -o lambda_s=0.625 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.750_lt0.000 -o lambda_s=0.750 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.875_lt0.000 -o lambda_s=0.875 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls1.000_lt0.000 -o lambda_s=1.000 -o lambda_t=0.000
 
 # λt sweep, λs=0
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.125 -o lambda_s=0.000 -o lambda_t=0.125
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.250 -o lambda_s=0.000 -o lambda_t=0.250
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.375 -o lambda_s=0.000 -o lambda_t=0.375
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.625 -o lambda_s=0.000 -o lambda_t=0.625
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.750 -o lambda_s=0.000 -o lambda_t=0.750
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.875 -o lambda_s=0.000 -o lambda_t=0.875
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt1.000 -o lambda_s=0.000 -o lambda_t=1.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.125 -o lambda_s=0.000 -o lambda_t=0.125
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.250 -o lambda_s=0.000 -o lambda_t=0.250
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.375 -o lambda_s=0.000 -o lambda_t=0.375
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.625 -o lambda_s=0.000 -o lambda_t=0.625
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.750 -o lambda_s=0.000 -o lambda_t=0.750
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt0.875 -o lambda_s=0.000 -o lambda_t=0.875
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.000_lt1.000 -o lambda_s=0.000 -o lambda_t=1.000
 
 # λs sweep with λt=0.650
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.125_lt0.650 -o lambda_s=0.125 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.250_lt0.650 -o lambda_s=0.250 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.375_lt0.650 -o lambda_s=0.375 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.625_lt0.650 -o lambda_s=0.625 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.750_lt0.650 -o lambda_s=0.750 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.875_lt0.650 -o lambda_s=0.875 -o lambda_t=0.000
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls1.000_lt0.650 -o lambda_s=1.000 -o lambda_t=0.000
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.125_lt0.650 -o lambda_s=0.125 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.250_lt0.650 -o lambda_s=0.250 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.375_lt0.650 -o lambda_s=0.375 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.625_lt0.650 -o lambda_s=0.625 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.750_lt0.650 -o lambda_s=0.750 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.875_lt0.650 -o lambda_s=0.875 -o lambda_t=0.650
+# nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls1.000_lt0.650 -o lambda_s=1.000 -o lambda_t=0.650
 
 # λt sweep with λs=0.650
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.125 -o lambda_s=0.000 -o lambda_t=0.125
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.250 -o lambda_s=0.000 -o lambda_t=0.250
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.375 -o lambda_s=0.000 -o lambda_t=0.375
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.625 -o lambda_s=0.000 -o lambda_t=0.625
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.750 -o lambda_s=0.000 -o lambda_t=0.750
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.875 -o lambda_s=0.000 -o lambda_t=0.875
-nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt1.000 -o lambda_s=0.000 -o lambda_t=1.000
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.125 -o lambda_s=0.650 -o lambda_t=0.125
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.250 -o lambda_s=0.650 -o lambda_t=0.250
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.375 -o lambda_s=0.650 -o lambda_t=0.375
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.625 -o lambda_s=0.650 -o lambda_t=0.625
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.750 -o lambda_s=0.650 -o lambda_t=0.750
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt0.875 -o lambda_s=0.650 -o lambda_t=0.875
+nbdo run -c cfgs/fof_paper.json -o tag=fof_paper_ls0.650_lt1.000 -o lambda_s=0.650 -o lambda_t=1.000
